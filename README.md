@@ -11,8 +11,8 @@ RestGate does only these things:
 
 * Protects Endpoints by requiring authentication *via* the Header
 * Multiple Keys and optional corresponding Secrets
-* Keys (and corresponding Secrets) can be configured in code
-* Keys (and corresponding Secrets) can be stored in any SQL database (including MySQL)
+* Keys (and corresponding Secrets) can be configured in code [Static mode]
+* Keys (and corresponding Secrets) can be stored in any SQL database (including MySQL) [Database mode]
 * JSON Error Responses are fully customizable
 * Utilize a Context (i.e. Gorilla Context) to pass authenticated KEY to later middleware and endpoint handlers
 
