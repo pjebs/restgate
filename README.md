@@ -163,7 +163,7 @@ You should put it directly after Recovery, Logging and HTTPS Security middleware
 
 **How do I make this package even more secure?**
 
-You MUST use middleware such as [Secure](https://github.com/unrolled/secure) to ensure all requests are via a HTTPS connection. The connection must also use a HTTPS connection.
+You MUST use middleware such as [Secure](https://github.com/unrolled/secure) to ensure all requests are via a HTTPS connection. Of course, the connection must also use a HTTPS connection, so purchase a [SSL certificate](http://www.rapidssl.com/).
 
 **How do I set up the database?**
 
