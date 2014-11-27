@@ -37,7 +37,7 @@ type Config struct {
 	Secret        []string //Can be "" but not recommended
 	TableName     string
 	ErrorMessages map[int]map[string]string
-	Context       func(r *http.Request, authenicatedKey string)
+	Context       func(r *http.Request, authenticatedKey string)
 	Debug         bool
 }
 

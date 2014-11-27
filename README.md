@@ -86,8 +86,8 @@ func NewRoute() *mux.Router {
 
 //Optional Context - If not required, remove 'Context: C' or alternatively pass nil (see above)
 //Endpoint handler can determine the key used to authenticate via: context.Get(r, 0).(string)
-func C(r *http.Request, authenicatedKey string) {
-	context.Set(r, 0, authenicatedKey) // Read http://www.gorillatoolkit.org/pkg/context about setting arbitary context key
+func C(r *http.Request, authenticatedKey string) {
+	context.Set(r, 0, authenticatedKey) // Read http://www.gorillatoolkit.org/pkg/context about setting arbitary context key
 }
 
 //Optional Database
