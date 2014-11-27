@@ -48,7 +48,7 @@ type RESTGate struct {
 	config            Config
 }
 
-func NewRESTGate(headerKeyLabel string, headerSecretLabel string, as AuthenticationSource, config Config) *RESTGate {
+func New(headerKeyLabel string, headerSecretLabel string, as AuthenticationSource, config Config) *RESTGate {
 	t := &RESTGate{headerKeyLabel: headerKeyLabel, headerSecretLabel: headerSecretLabel, source: as, config: config}
 	log.Printf("RestGate initializing")
 
@@ -143,28 +143,28 @@ func (self *RESTGate) ServeHTTP(w http.ResponseWriter, req *http.Request, next h
 				if secretDoesntExist {
 					//Authentication PASSED
 					authenticationPassed = true
-					if self.config.Context != nil {
-						self.config.Context(req, key)
-					}
-					next(w, req)
+					// if self.config.Context != nil {
+					// 	self.config.Context(req, key)
+					// }
+					// next(w, req)
 					break
 				} else if index > (len(self.config.Secret) - 1) { //Out of Range so corresponding secret doesn't exist
 					//Authentication PASSED
 					authenticationPassed = true
-					if self.config.Context != nil {
-						self.config.Context(req, key)
-					}
-					next(w, req)
+					// if self.config.Context != nil {
+					// 	self.config.Context(req, key)
+					// }
+					// next(w, req)
 					break
 				} else {
 					//Corresponding Secret exists
 					if secret == self.config.Secret[index] {
 						//Authentication PASSED
 						authenticationPassed = true
-						if self.config.Context != nil {
-							self.config.Context(req, key)
-						}
-						next(w, req)
+						// if self.config.Context != nil {
+						// 	self.config.Context(req, key)
+						// }
+						// next(w, req)
 						break
 					} else {
 						//Authentication FAILED
@@ -182,6 +182,11 @@ func (self *RESTGate) ServeHTTP(w http.ResponseWriter, req *http.Request, next h
 			r := render.New(render.Options{})
 			r.JSON(w, http.StatusUnauthorized, self.config.ErrorMessages[2]) //"Unauthorized Access"
 			return
+		} else { //Authentication PASSED
+			if self.config.Context != nil {
+				self.config.Context(req, key)
+			}
+			next(w, req)
 		}
 
 	} else if self.source == Database {
@@ -217,7 +222,7 @@ func (self *RESTGate) ServeHTTP(w http.ResponseWriter, req *http.Request, next h
 		// log.Printf("result error: %+v", err)
 		// log.Printf("count: %+v", count)
 
-		if err == nil && count > 0 { //Make this count == 1 in case database field not set up properly (i.e. make KEY field UNIQUE)
+		if err == nil && count == 1 {
 			//Authentication PASSED
 			if self.config.Context != nil {
 				self.config.Context(req, key)
@@ -225,6 +230,9 @@ func (self *RESTGate) ServeHTTP(w http.ResponseWriter, req *http.Request, next h
 			next(w, req)
 		} else { //==sql.ErrNoRows or count == 0
 			//Something went wrong
+			if self.config.Debug == true && count > 1 {
+				log.Printf("RestGate: Database query returned more than 1 identical Key. Make sure the KEY field in the table is set to UNIQUE")
+			}
 			r := render.New(render.Options{})
 			r.JSON(w, http.StatusUnauthorized, self.config.ErrorMessages[2]) //"Unauthorized Access"
 			return

@@ -67,11 +67,11 @@ func NewRoute() *mux.Router {
 
 	//Create negroni instance to handle different middlewares for api routes
 	negRest := negroni.New()
-	negRest.Use(restgate.NewRESTGate("X-Auth-Key", "X-Auth-Secret", restgate.Static, restgate.Config{Context: C, Key: []string{"12345"}, Secret: []string{"secret"}}))
+	negRest.Use(restgate.New("X-Auth-Key", "X-Auth-Secret", restgate.Static, restgate.Config{Context: C, Key: []string{"12345"}, Secret: []string{"secret"}}))
 	negRest.UseHandler(restRouter)
 
 	negRest2 := negroni.New()
-	negRest2.Use(restgate.NewRESTGate("X-Auth-Key", "X-Auth-Secret", restgate.Database, restgate.Config{DB: SqlDB(), TableName: "users", Key: []string{"keys"}, Secret: []string{"secrets"}}))
+	negRest2.Use(restgate.New("X-Auth-Key", "X-Auth-Secret", restgate.Database, restgate.Config{DB: SqlDB(), TableName: "users", Key: []string{"keys"}, Secret: []string{"secrets"}}))
 	negRest2.UseHandler(rest2Router)
 
 	//Create main router
@@ -118,7 +118,7 @@ Methods
 --------
 
 ```go
-func NewRESTGate(headerKeyLabel string, headerSecretLabel string, as AuthenticationSource, config Config) *RESTGate
+func New(headerKeyLabel string, headerSecretLabel string, as AuthenticationSource, config Config) *RESTGate
 ```
 
 `headerKeyLabel string` - What the header field name should be for required **KEY**.
@@ -181,9 +181,9 @@ If you are only using a **KEY**, then usually it is used to *identify* the user 
 
 **PANIC: runtime error: invalid memory address or nil pointer dereference**
 
-This usually occurs at this point: `<negroni.New()>.Use(restgate.NewRESTGate(...))`.
+This usually occurs at this point: `<negroni.New()>.Use(restgate.New(...))`.
 
-`restgate.NewRESTGate(...)` returns a nil pointer if there is a configuration error. A nil pointer will cause Negroni to panic. This is beneficial because you will notice it instantly and fix up the configuration.
+`restgate.New(...)` returns a nil pointer if there is a configuration error. A nil pointer will cause Negroni to panic. This is beneficial because you will notice it instantly and fix up the configuration.
 
 
 
