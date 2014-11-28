@@ -202,7 +202,6 @@ func (self *RESTGate) ServeHTTP(w http.ResponseWriter, req *http.Request, next h
 		}
 
 		stmt, err := db.Prepare(preparedStatement)
-		defer stmt.Close()
 		if err != nil {
 			if self.config.Debug == true {
 				log.Printf("RestGate: Run time database error: %+v", err)
@@ -211,6 +210,7 @@ func (self *RESTGate) ServeHTTP(w http.ResponseWriter, req *http.Request, next h
 			r.JSON(w, http.StatusUnauthorized, self.config.ErrorMessages[99]) //"Software Developers have not setup authentication correctly"
 			return
 		}
+		defer stmt.Close()
 
 		var count int //stores query result
 		if secretDoesntExists {
