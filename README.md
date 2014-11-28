@@ -9,10 +9,10 @@ It can be used with almost all frameworks including [Negroni](https://github.com
 
 RestGate does only these things:
 
-* Protects Endpoints by requiring authentication *via* the Header
+* Protects Endpoints by requiring authentication *via* the HTTP Request Header
 * Multiple Keys and optional corresponding Secrets
 * Keys (and corresponding Secrets) can be configured in code [Static mode]
-* Keys (and corresponding Secrets) can be stored in any SQL database (including MySQL) [Database mode]
+* Keys (and corresponding Secrets) can be stored in any SQL database [Database mode]
 * JSON Error Responses are fully customizable
 * Utilize a Context (i.e. Gorilla Context) to pass authenticated KEY to later middleware and endpoint handlers
 
@@ -85,7 +85,7 @@ func NewRoute() *mux.Router {
 }
 
 //Optional Context - If not required, remove 'Context: C' or alternatively pass nil (see above)
-//Endpoint handler can determine the key used to authenticate via: context.Get(r, 0).(string)
+//NB: Endpoint handler can determine the key used to authenticate via: context.Get(r, 0).(string)
 func C(r *http.Request, authenticatedKey string) {
 	context.Set(r, 0, authenticatedKey) // Read http://www.gorillatoolkit.org/pkg/context about setting arbitary context key
 }
@@ -157,6 +157,14 @@ Set the `Debug` field to `true` in the `Config` struct. This will give extra det
 FAQ
 ----
 
+**How do I actually authenticate?**
+
+When the user wants to use your API (i.e. send requests to your RestGate protected endpoints), they must modify the header of their request. They can't just use ordinary POST requests. For curl, the command is `-H.` [See this article](http://stackoverflow.com/questions/356705/how-to-send-a-header-using-a-http-request-through-a-curl-call).
+
+For the code sample above, the Header will need to contain `X-Auth-Key: ***A valid Key goes here***` and `X-Auth-Secret: ***A valid Secret goes here***.`
+
+If the Key/Secret is invalid, the user **will not** be able to access your endpoint. Instead they will be returned a JSON response: `Unauthorized Access` (provided you didn't customize the default error messages).
+
 **Where should I put RestGate in my middleware stack?**
 
 You should put it directly after Recovery, Logging and HTTPS Security middleware.
@@ -175,7 +183,9 @@ See the example code above. The number of Secrets configured must be equal to or
 
 **What's the difference between a Key and Secret?**
 
-There is no hard and fast rule and you can use it however you want. If you want to use a **Key** and **Secret**, then the **Key** is equivalent to a *username* and the **Secret** is equivalent to a *password*. The **Secret** should be kept *secret*. The **Key** can be used to *identify* the user of the REST API services.
+There is no hard and fast rule and you can use it however you want.
+
+If you want to use a **Key** and **Secret**, then the **Key** is equivalent to a *username* and the **Secret** is equivalent to a *password*. The **Secret** should be kept *secret*. The **Key** can be used to *identify* the user of the REST API services.
 
 If you are only using a **KEY**, then usually it is used to *identify* the user of the REST API service. It also operates as the *password* so keep it private.
 
