@@ -1,4 +1,4 @@
-RestGate for Go
+RestGate for Go [![GoDoc](http://godoc.org/github.com/pjebs/restgate?status.svg)](http://godoc.org/github.com/pjebs/restgate)
 ===============
 
 
@@ -60,10 +60,10 @@ func NewRoute() *mux.Router {
 
 	//Create subrouters
 	restRouter := mux.NewRouter()
-	restRouter.HandleFunc("/api", c.Rest()) //Rest API Endpoint handler -> Use your own
+	restRouter.HandleFunc("/api", Handler1()) //Rest API Endpoint handler -> Use your own
 
 	rest2Router := mux.NewRouter()
-	rest2Router.HandleFunc("/api2", c.Rest2()) //A second Rest API Endpoint handler -> Use your own
+	rest2Router.HandleFunc("/api2", Handler2()) //A second Rest API Endpoint handler -> Use your own
 
 	//Create negroni instance to handle different middlewares for api routes
 	negRest := negroni.New()
@@ -76,7 +76,7 @@ func NewRoute() *mux.Router {
 
 	//Create main router
 	mainRouter := mux.NewRouter().StrictSlash(true)
-	mainRouter.HandleFunc("/", c.ShowMain()) //Main Handler -> Use your own
+	mainRouter.HandleFunc("/", MainHandler()) //Main Handler -> Use your own
 	mainRouter.Handle("/api", negRest) //This endpoint is protected by RestGate via hardcoded KEYs
 	mainRouter.Handle("/api2", negRest2) //This endpoint is protected by RestGate via KEYs stored in a database
 
@@ -102,7 +102,7 @@ func SqlDB() *sql.DB {
 
 	openString := DB_USER + ":" + DB_PASSWORD + "@tcp(" + DB_HOST + ":" + DB_PORT + ")/" + DB_NAME
 
-	db, err := sql.Open("mysql", openString)
+	db, err := sql.Open(DB_TYPE, openString)
 	if err != nil {
 		return nil
 	}
@@ -161,7 +161,7 @@ FAQ
 
 When the user wants to use your API (i.e. send requests to your RestGate protected endpoints), they must modify the header of their request. They can't just use ordinary POST requests. For curl, the command is `-H.` [See this article](http://stackoverflow.com/questions/356705/how-to-send-a-header-using-a-http-request-through-a-curl-call).
 
-For the code sample above, the Header will need to contain `X-Auth-Key: ***A valid Key goes here***` and `X-Auth-Secret: ***A valid Secret goes here***.`
+For the code sample above, the HTTP Request Header will need to contain `X-Auth-Key: ***A valid Key goes here***` and `X-Auth-Secret: ***A valid Secret goes here***.`
 
 If the Key/Secret is invalid, the user **will not** be able to access your endpoint. Instead they will be returned a JSON response: `Unauthorized Access` (provided you didn't customize the default error messages).
 
@@ -179,11 +179,13 @@ Make sure that the field you use to store the Keys are set to **UNIQUE**. That e
 
 **I'm using hardcoded Key values. How do I set up the corresponding Secrets?**
 
-See the example code above. The number of Secrets configured must be equal to or less than the number of Keys configured. The index of the Key slice corresponds to the same index in the Secret slice. If you want to disable the Secret for a particular Key, set it to `"".` If the number of Keys outnumber the number of Secrets, then the outnumbered Keys will be not have a corresponding Secret (equivalent to the Secret being disabled for that particular Key).
+See the example code above. The number of Secrets configured must be equal to or less than the number of Keys configured. The index of the Key slice corresponds to the same index in the Secret slice. If you want to disable the Secret for a particular Key, set it to `"".` If the number of Keys outnumber the number of Secrets, then the outnumbering Keys will be not have a corresponding Secret (equivalent to the Secret being disabled for that particular Key).
 
 **What's the difference between a Key and Secret?**
 
 There is no hard and fast rule and you can use it however you want.
+
+Common usage:
 
 If you want to use a **Key** and **Secret**, then the **Key** is equivalent to a *username* and the **Secret** is equivalent to a *password*. The **Secret** should be kept *secret*. The **Key** can be used to *identify* the user of the REST API services.
 
@@ -195,9 +197,15 @@ This usually occurs at this point: `<negroni.New()>.Use(restgate.New(...))`.
 
 `restgate.New(...)` returns a nil pointer if there is a configuration error. A nil pointer will cause Negroni to panic. This is beneficial because you will notice it instantly and fix up the configuration.
 
+Other Useful Packages
+------------
 
+Check out [`"github.com/pjebs/jsonerror"`](https://github.com/pjebs/jsonerror) package. It will make error-handling, debugging and diagnosis 318% simpler and easier for all your Go projects.
 
 Final Notes
 ------------
 
 If you found this package useful, please **Star** it on github. Feel free to fork or provide pull requests. Any bug reports will be warmly received.
+
+
+[PJ Engineering and Business Solutions Pty. Ltd.](http://www.pjebs.com.au)
