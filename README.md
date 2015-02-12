@@ -17,6 +17,10 @@ RestGate does only these things:
 * Utilize a Context (i.e. Gorilla Context) to pass authenticated KEY to later middleware and endpoint handlers
 
 
+
+Since Go is a new programming language, I have made the documentation and code as easy to understand as possible. Studying the code can be a great learning experience.
+
+
 Installation
 -------------
 
@@ -24,7 +28,7 @@ Installation
 go get -u github.com/pjebs/restgate
 ```
 
-Optional - if you want to utilize a Context:
+Optional - if you want to [utilize a Context](http://elithrar.github.io/article/map-string-interface/):
 
 ```shell
 go get -u github.com/gorilla/context
@@ -48,6 +52,7 @@ func init() { //On Google App Engine you don't use main()
 
 	app := negroni.New()
 
+	//These middleware is common to all routes
 	app.Use(negroni.NewRecovery())
 	app.Use(negroni.NewLogger())
 	app.UseHandler(NewRoute())
@@ -65,7 +70,7 @@ func NewRoute() *mux.Router {
 	rest2Router := mux.NewRouter()
 	rest2Router.HandleFunc("/api2", Handler2()) //A second Rest API Endpoint handler -> Use your own
 
-	//Create negroni instance to handle different middlewares for api routes
+	//Create negroni instance to handle different middlewares for different api routes
 	negRest := negroni.New()
 	negRest.Use(restgate.New("X-Auth-Key", "X-Auth-Secret", restgate.Static, restgate.Config{Context: C, Key: []string{"12345"}, Secret: []string{"secret"}}))
 	negRest.UseHandler(restRouter)
