@@ -40,12 +40,14 @@ Usage
 ```go
 
 import (
+	"database/sql"
+	"fmt"
 	"github.com/codegangsta/negroni"
+	_ "github.com/go-sql-driver/mysql" //_ "github.com/lib/pq" (For PostgreSQL)
 	"github.com/gorilla/context"
 	"github.com/gorilla/mux"
 	"github.com/pjebs/restgate"
-	"database/sql"
-	_ "github.com/go-sql-driver/mysql"
+	"net/http"
 )
 
 func init() { //On Google App Engine you don't use main()
@@ -117,6 +119,27 @@ func SqlDB() *sql.DB {
 
 }
 
+//Endpoint Handlers
+func Handler1() func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, "/api -> Handler1 - protected by RestGate (Static Mode)")
+	}
+}
+
+func Handler2() func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, "/api2 -> Handler2 - protected by RestGate (database mode)")
+	}
+}
+
+func MainHandler() func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+
+		fmt.Fprint(w, "/ -> MainHandler - not protected by RestGate")
+
+	}
+}
+
 ```
 
 Methods
@@ -132,7 +155,7 @@ func New(headerKeyLabel string, headerSecretLabel string, as AuthenticationSourc
 
 `as AuthenticationSource` - Can be `restgate.Static` or `restgate.Database.` If Static is chosen, then KEY(s) and SECRET(s) must be hardcoded.
 
-`config Config` - A struct used to configure extra settings such as hardcoded **KEYS** and **SECRETS**, custom JSON error messages, Database settings (for `restgate.Database` mode) and context function.
+`config Config` - A struct used to configure extra settings such as hardcoded **KEYS** and **SECRETS**, custom JSON error messages, Database settings (for `restgate.Database` mode) and context function. **PostgreSQL** users must set `Postgres` to true.
 
 Settings
 ---------
@@ -151,6 +174,8 @@ ErrorMessages: map[int]map[string]string{
 ```
 
 Remember, if you want to modify the default error codes and messages, you must provide error messages for all 3. Don't change the number 1,2 and 99 on the far left hand side. They are for internal use.
+
+It may be more useful to use the [`"github.com/pjebs/jsonerror"`](https://github.com/pjebs/jsonerror) package for setting custom error messages. See [`restgate.go@L86`](https://github.com/pjebs/restgate/blob/master/restgate.go#L86) for an example.
 
 
 Debugging
@@ -180,7 +205,7 @@ You MUST use middleware such as [Secure](https://github.com/unrolled/secure) to 
 
 **How do I set up the database?**
 
-Make sure that the field you use to store the Keys are set to **UNIQUE**. That ensures that identical keys are prohibited. It also speeds up the query search. Also ensure that you set the Database name when you create the `sql.DB` struct.
+Make sure that the field you use to store the Keys are set to **UNIQUE** and **NOT NULL** (or **PRIMARY KEY**). That ensures that identical keys are prohibited. It also speeds up the query search. Also ensure that you set the Database name when you create the `sql.DB` struct.
 
 **I'm using hardcoded Key values. How do I set up the corresponding Secrets?**
 
@@ -205,7 +230,7 @@ This usually occurs at this point: `<negroni.New()>.Use(restgate.New(...))`.
 Other Useful Packages
 ------------
 
-Check out [`"github.com/pjebs/jsonerror"`](https://github.com/pjebs/jsonerror) package. It will make error-handling, debugging and diagnosis 318% simpler and easier for all your Go projects.
+Check out [`"github.com/pjebs/jsonerror"`](https://github.com/pjebs/jsonerror) package. It will make error-handling, debugging and diagnosis much simpler and more elegant for all your Go projects.
 
 Final Notes
 ------------

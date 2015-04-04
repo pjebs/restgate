@@ -10,16 +10,19 @@ package restgate
 |
 */
 
+/*
+Thanks to Ido Ben-Natan ("IdoBn") for postgres fix.
+*/
+
 import (
 	// "errors"
+	"database/sql"
 	"fmt"
 	"log"
 	"net/http"
 
+	e "github.com/pjebs/jsonerror"
 	"gopkg.in/unrolled/render.v1"
-
-	"database/sql"
-	_ "github.com/go-sql-driver/mysql"
 )
 
 type AuthenticationSource int
@@ -39,6 +42,7 @@ type Config struct {
 	ErrorMessages map[int]map[string]string
 	Context       func(r *http.Request, authenticatedKey string)
 	Debug         bool
+	Postgres      bool
 }
 
 type RESTGate struct {
@@ -52,7 +56,6 @@ func New(headerKeyLabel string, headerSecretLabel string, as AuthenticationSourc
 	t := &RESTGate{headerKeyLabel: headerKeyLabel, headerSecretLabel: headerSecretLabel, source: as, config: config}
 	log.Printf("RestGate initializing")
 
-	// log.Printf("error is at this point") //Move this statement around to diagnose what is causing  PANIC: runtime error: invalid memory address or nil pointer dereference
 	numberKeys := len(t.config.Key)
 	numberSecrets := len(t.config.Secret)
 
@@ -80,9 +83,9 @@ func New(headerKeyLabel string, headerSecretLabel string, as AuthenticationSourc
 	//Default Error Messages
 	if t.config.ErrorMessages == nil {
 		t.config.ErrorMessages = map[int]map[string]string{
-			1:  map[string]string{"code": "1", "error": "No Key Or Secret"},
-			2:  map[string]string{"code": "2", "error": "Unauthorized Access"},
-			99: map[string]string{"code": "99", "error": "Software Developers have not setup authentication correctly"},
+			1:  e.New(1, "No Key Or Secret", "", "com.github.pjebs.restgate").Render(),
+			2:  e.New(2, "Unauthorized Access", "", "com.github.pjebs.restgate").Render(),
+			99: e.New(99, "Software Developers have not setup authentication correctly", "", "com.github.pjebs.restgate").Render(),
 		}
 	}
 
@@ -143,28 +146,16 @@ func (self *RESTGate) ServeHTTP(w http.ResponseWriter, req *http.Request, next h
 				if secretDoesntExist {
 					//Authentication PASSED
 					authenticationPassed = true
-					// if self.config.Context != nil {
-					// 	self.config.Context(req, key)
-					// }
-					// next(w, req)
 					break
 				} else if index > (len(self.config.Secret) - 1) { //Out of Range so corresponding secret doesn't exist
 					//Authentication PASSED
 					authenticationPassed = true
-					// if self.config.Context != nil {
-					// 	self.config.Context(req, key)
-					// }
-					// next(w, req)
 					break
 				} else {
 					//Corresponding Secret exists
 					if secret == self.config.Secret[index] {
 						//Authentication PASSED
 						authenticationPassed = true
-						// if self.config.Context != nil {
-						// 	self.config.Context(req, key)
-						// }
-						// next(w, req)
 						break
 					} else {
 						//Authentication FAILED
@@ -196,9 +187,17 @@ func (self *RESTGate) ServeHTTP(w http.ResponseWriter, req *http.Request, next h
 
 		var preparedStatement string
 		if secretDoesntExists {
-			preparedStatement = fmt.Sprintf("SELECT COUNT(`%v`) FROM `%v` WHERE `%v`=?", self.config.Key[0], self.config.TableName, self.config.Key[0])
+			if self.config.Postgres == false { //COUNT(*) is definately faster on MYISAM and possibly InnoDB (MySQL engines)
+				preparedStatement = fmt.Sprintf("SELECT COUNT(*) FROM `%v` WHERE `%v`=?", self.config.TableName, self.config.Key[0])
+			} else {
+				preparedStatement = fmt.Sprintf("SELECT COUNT(%v) FROM %v WHERE %v=$1", self.config.Key[0], self.config.TableName, self.config.Key[0])
+			}
 		} else {
-			preparedStatement = fmt.Sprintf("SELECT COUNT(`%v`) FROM `%v` WHERE `%v`=? AND `%v`=?", self.config.Key[0], self.config.TableName, self.config.Key[0], self.config.Secret[0])
+			if self.config.Postgres == false {
+				preparedStatement = fmt.Sprintf("SELECT COUNT(*) FROM `%v` WHERE `%v`=? AND `%v`=?", self.config.TableName, self.config.Key[0], self.config.Secret[0])
+			} else {
+				preparedStatement = fmt.Sprintf("SELECT COUNT(%v) FROM %v WHERE %v=$1 AND %v=$2", self.config.Key[0], self.config.TableName, self.config.Key[0], self.config.Secret[0])
+			}
 		}
 
 		stmt, err := db.Prepare(preparedStatement)
