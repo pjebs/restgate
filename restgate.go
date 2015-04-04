@@ -19,7 +19,6 @@ import (
 	"gopkg.in/unrolled/render.v1"
 
 	"database/sql"
-	_ "github.com/go-sql-driver/mysql"
 )
 
 type AuthenticationSource int
@@ -196,9 +195,9 @@ func (self *RESTGate) ServeHTTP(w http.ResponseWriter, req *http.Request, next h
 
 		var preparedStatement string
 		if secretDoesntExists {
-			preparedStatement = fmt.Sprintf("SELECT COUNT(`%v`) FROM `%v` WHERE `%v`=?", self.config.Key[0], self.config.TableName, self.config.Key[0])
+			preparedStatement = fmt.Sprintf("SELECT COUNT(%v) FROM %v WHERE %v=$1", self.config.Key[0], self.config.TableName, self.config.Key[0])
 		} else {
-			preparedStatement = fmt.Sprintf("SELECT COUNT(`%v`) FROM `%v` WHERE `%v`=? AND `%v`=?", self.config.Key[0], self.config.TableName, self.config.Key[0], self.config.Secret[0])
+			preparedStatement = fmt.Sprintf("SELECT COUNT(%v) FROM %v WHERE %v=$1 AND %v=$2", self.config.Key[0], self.config.TableName, self.config.Key[0], self.config.Secret[0])
 		}
 
 		stmt, err := db.Prepare(preparedStatement)
