@@ -12,10 +12,12 @@ package restgate
 
 /*
 Thanks to Ido Ben-Natan ("IdoBn") for postgres fix.
+Thanks to Jeremy Saenz & Brendon Murphy for timing-attack protection
 */
 
 import (
 	// "errors"
+	"crypto/subtle"
 	"database/sql"
 	"fmt"
 	"log"
@@ -140,7 +142,7 @@ func (self *RESTGate) ServeHTTP(w http.ResponseWriter, req *http.Request, next h
 
 		//First search through all keys
 		for index, element := range self.config.Key {
-			if element == key { //Key matches
+			if secureCompare(element, key) { //Key matches
 
 				//Now check if secret matches
 				if secretDoesntExist {
@@ -153,16 +155,14 @@ func (self *RESTGate) ServeHTTP(w http.ResponseWriter, req *http.Request, next h
 					break
 				} else {
 					//Corresponding Secret exists
-					if secret == self.config.Secret[index] {
+					if secureCompare(secret, self.config.Secret[index]) {
 						//Authentication PASSED
 						authenticationPassed = true
 						break
 					} else {
 						//Authentication FAILED
 						authenticationPassed = false
-						r := render.New(render.Options{})
-						r.JSON(w, http.StatusUnauthorized, self.config.ErrorMessages[2]) //"Unauthorized Access"
-						return
+						break
 					}
 				}
 			}
@@ -243,5 +243,14 @@ func (self *RESTGate) ServeHTTP(w http.ResponseWriter, req *http.Request, next h
 		return
 	}
 
-	// next(w, req)
+}
+
+// secureCompare performs a constant time compare of two strings to limit timing attacks.
+func secureCompare(given string, actual string) bool {
+	if subtle.ConstantTimeEq(int32(len(given)), int32(len(actual))) == 1 {
+		return subtle.ConstantTimeCompare([]byte(given), []byte(actual)) == 1
+	} else {
+		/* Securely compare actual to itself to keep constant time, but always return false */
+		return subtle.ConstantTimeCompare([]byte(actual), []byte(actual)) == 1 && false
+	}
 }

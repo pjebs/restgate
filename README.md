@@ -15,6 +15,7 @@ RestGate does only these things:
 * Keys (and corresponding Secrets) can be stored in any SQL database [Database mode]
 * JSON Error Responses are fully customizable
 * Utilize a Context (i.e. Gorilla Context) to pass authenticated KEY to later middleware and endpoint handlers
+* Protection from timing-attacks (Authentication Verification)
 
 
 
@@ -38,6 +39,7 @@ Usage
 ------
 
 ```go
+package main
 
 import (
 	"database/sql"
@@ -122,21 +124,19 @@ func SqlDB() *sql.DB {
 //Endpoint Handlers
 func Handler1() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, "/api -> Handler1 - protected by RestGate (Static Mode)")
+		fmt.Fprint(w, "/api -> Handler1 - protected by RestGate (Static Mode)\n")
 	}
 }
 
 func Handler2() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, "/api2 -> Handler2 - protected by RestGate (database mode)")
+		fmt.Fprint(w, "/api2 -> Handler2 - protected by RestGate (database mode)\n")
 	}
 }
 
 func MainHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-
-		fmt.Fprint(w, "/ -> MainHandler - not protected by RestGate")
-
+		fmt.Fprint(w, "/ -> MainHandler - not protected by RestGate\n")
 	}
 }
 
@@ -231,6 +231,9 @@ Other Useful Packages
 ------------
 
 Check out [`"github.com/pjebs/jsonerror"`](https://github.com/pjebs/jsonerror) package. It will make error-handling, debugging and diagnosis much simpler and more elegant for all your Go projects.
+
+
+Check out [`"github.com/pjebs/optimus-go"`](https://github.com/pjebs/optimus-go) package. Internal ID hashing and Obfuscation using Knuth's Algorithm. (For databases etc)
 
 Final Notes
 ------------
