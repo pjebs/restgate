@@ -16,7 +16,7 @@ RestGate does only these things:
 * JSON Error Responses are fully customizable
 * Utilize a Context (i.e. Gorilla Context) to pass authenticated KEY to later middleware and endpoint handlers
 * Protection from timing-attacks (Authentication Verification)
-
+* HTTPS Protection
 
 
 Since Go is a new programming language, I have made the documentation and code as easy to understand as possible. Studying the code can be a great learning experience.
@@ -169,13 +169,14 @@ If you want to provide custom JSON error messages, you can pass something like t
 ErrorMessages: map[int]map[string]string{
 			1:  map[string]string{"code": "1", "error": "No Key Or Secret"},
 			2:  map[string]string{"code": "2", "error": "Unauthorized Access"},
+			3:  map[string]string{"code": "3", "error": "Please use HTTPS connection"},
 			99: map[string]string{"code": "99", "error": "Software Developers have not setup authentication correctly"},
 		}
 ```
 
-Remember, if you want to modify the default error codes and messages, you must provide error messages for all 3. Don't change the number 1,2 and 99 on the far left hand side. They are for internal use.
+Remember, if you want to modify the default error codes and messages, you should provide error messages for all 4. Don't change the number 1,2,3 and 99 on the far left hand side. They are for internal use.
 
-It may be more useful to use the [`"github.com/pjebs/jsonerror"`](https://github.com/pjebs/jsonerror) package for setting custom error messages. See [`restgate.go@L86`](https://github.com/pjebs/restgate/blob/master/restgate.go#L86) for an example.
+It may be more useful to use the [`"github.com/pjebs/jsonerror"`](https://github.com/pjebs/jsonerror) package for setting custom error messages. See [`restgate.go@L90`](https://github.com/pjebs/restgate/blob/master/restgate.go#L90) for an example.
 
 
 Debugging
@@ -202,6 +203,8 @@ You should put it directly after Recovery, Logging and HTTPS Security middleware
 **How do I make this package even more secure?**
 
 You MUST use middleware such as [Secure](https://github.com/unrolled/secure) to ensure all requests are via a HTTPS connection. Of course, the connection must also use a HTTPS connection, so purchase a [SSL certificate](http://www.rapidssl.com/).
+
+By default, basic HTTPS Protection is offered. This should be kept enabled for Production. For Local Development, you can set `HTTPSProtectionOff=true` in the `Config` struct to **allow** HTTP connections.
 
 **How do I set up the database?**
 

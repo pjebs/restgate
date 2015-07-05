@@ -4,7 +4,7 @@ package restgate
 |--------------------------------------------------------------------------
 | WARNING
 |--------------------------------------------------------------------------
-| Always use this middleware library with a HTTPS Connection.
+| Never Set HTTPSProtectionOff=true In Production.
 | The Key and Password will be exposed and highly unsecure otherwise!
 | The database server should also use HTTPS Connection and be hidden away
 |
@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 
 	e "github.com/pjebs/jsonerror"
 	"gopkg.in/unrolled/render.v1"
@@ -38,13 +39,14 @@ const (
 //When AuthenticationSource=Database, Key[0]=Key_Column and Secret[0]=Secret_Column.
 type Config struct {
 	*sql.DB
-	Key           []string
-	Secret        []string //Can be "" but not recommended
-	TableName     string
-	ErrorMessages map[int]map[string]string
-	Context       func(r *http.Request, authenticatedKey string)
-	Debug         bool
-	Postgres      bool
+	Key                []string
+	Secret             []string //Can be "" but not recommended
+	TableName          string
+	ErrorMessages      map[int]map[string]string
+	Context            func(r *http.Request, authenticatedKey string)
+	Debug              bool
+	Postgres           bool
+	HTTPSProtectionOff bool //Default is HTTPS Protection On
 }
 
 type RESTGate struct {
@@ -87,7 +89,24 @@ func New(headerKeyLabel string, headerSecretLabel string, as AuthenticationSourc
 		t.config.ErrorMessages = map[int]map[string]string{
 			1:  e.New(1, "No Key Or Secret", "", "com.github.pjebs.restgate").Render(),
 			2:  e.New(2, "Unauthorized Access", "", "com.github.pjebs.restgate").Render(),
+			3:  e.New(3, "Please use HTTPS connection", "", "com.github.pjebs.restgate").Render(),
 			99: e.New(99, "Software Developers have not setup authentication correctly", "", "com.github.pjebs.restgate").Render(),
+		}
+	} else {
+		if _, ok := t.config.ErrorMessages[1]; !ok {
+			t.config.ErrorMessages[1] = e.New(1, "No Key Or Secret", "", "com.github.pjebs.restgate").Render()
+		}
+
+		if _, ok := t.config.ErrorMessages[2]; !ok {
+			t.config.ErrorMessages[2] = e.New(2, "Unauthorized Access", "", "com.github.pjebs.restgate").Render()
+		}
+
+		if _, ok := t.config.ErrorMessages[3]; !ok {
+			t.config.ErrorMessages[3] = e.New(3, "Please use HTTPS connection", "", "com.github.pjebs.restgate").Render()
+		}
+
+		if _, ok := t.config.ErrorMessages[99]; !ok {
+			t.config.ErrorMessages[99] = e.New(99, "Software Developers have not setup authentication correctly", "", "com.github.pjebs.restgate").Render()
 		}
 	}
 
@@ -123,6 +142,19 @@ func New(headerKeyLabel string, headerSecretLabel string, as AuthenticationSourc
 }
 
 func (self *RESTGate) ServeHTTP(w http.ResponseWriter, req *http.Request, next http.HandlerFunc) {
+
+	//Check if HTTPS Protection has been turned off
+	if self.config.HTTPSProtectionOff {
+		//HTTPS Protection is off
+		log.Printf("\x1b[31mWARNING: HTTPS Protection is off. This is potentially insecure!\x1b[39;49m")
+	} else {
+		//HTTPS Protection is on so we must check it
+		if !(strings.EqualFold(req.URL.Scheme, "https") || req.TLS != nil) {
+			r := render.New(render.Options{})
+			r.JSON(w, http.StatusUnauthorized, self.config.ErrorMessages[3]) //"Please use HTTPS connection"
+			return
+		}
+	}
 
 	//Check key in Header
 	key := req.Header.Get(self.headerKeyLabel)
