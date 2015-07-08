@@ -110,6 +110,12 @@ func New(headerKeyLabel string, headerSecretLabel string, as AuthenticationSourc
 		}
 	}
 
+	//Check if HTTPS Protection has been turned off
+	if self.config.HTTPSProtectionOff {
+		//HTTPS Protection is off
+		log.Printf("\x1b[31mWARNING: HTTPS Protection is off. This is potentially insecure!\x1b[39;49m")
+	}
+
 	if as == Database {
 
 		if numberKeys != 1 { //We need exactly 1 Key (it represents field name in database)
@@ -144,10 +150,7 @@ func New(headerKeyLabel string, headerSecretLabel string, as AuthenticationSourc
 func (self *RESTGate) ServeHTTP(w http.ResponseWriter, req *http.Request, next http.HandlerFunc) {
 
 	//Check if HTTPS Protection has been turned off
-	if self.config.HTTPSProtectionOff {
-		//HTTPS Protection is off
-		log.Printf("\x1b[31mWARNING: HTTPS Protection is off. This is potentially insecure!\x1b[39;49m")
-	} else {
+	if !self.config.HTTPSProtectionOff {
 		//HTTPS Protection is on so we must check it
 		if !(strings.EqualFold(req.URL.Scheme, "https") || req.TLS != nil) {
 			r := render.New(render.Options{})
@@ -174,7 +177,7 @@ func (self *RESTGate) ServeHTTP(w http.ResponseWriter, req *http.Request, next h
 
 		//First search through all keys
 		for index, element := range self.config.Key {
-			if secureCompare(element, key) { //Key matches
+			if secureCompare(key, element) { //Key matches
 
 				//Now check if secret matches
 				if secretDoesntExist {
