@@ -111,7 +111,7 @@ func New(headerKeyLabel string, headerSecretLabel string, as AuthenticationSourc
 	}
 
 	//Check if HTTPS Protection has been turned off
-	if self.config.HTTPSProtectionOff {
+	if t.config.HTTPSProtectionOff {
 		//HTTPS Protection is off
 		log.Printf("\x1b[31mWARNING: HTTPS Protection is off. This is potentially insecure!\x1b[39;49m")
 	}
