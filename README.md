@@ -206,6 +206,8 @@ You MUST use middleware such as [Secure](https://github.com/unrolled/secure) to 
 
 By default, basic HTTPS Protection is offered. This should be kept enabled for Production. For Local Development, you can set `HTTPSProtectionOff=true` in the `Config` struct to **allow** HTTP connections.
 
+If you are using Google App Engine - **Flexible** Environment, then set `GAE_FlexibleEnvironment: true`. Keep this set to false (default) under all other circumstances including Google App Engine - **Standard** Environment!
+
 **How do I set up the database?**
 
 Make sure that the field you use to store the Keys are set to **UNIQUE** and **NOT NULL** (or **PRIMARY KEY**). That ensures that identical keys are prohibited. It also speeds up the query search. Also ensure that you set the Database name when you create the `sql.DB` struct.
