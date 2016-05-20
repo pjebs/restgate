@@ -39,14 +39,15 @@ const (
 //When AuthenticationSource=Database, Key[0]=Key_Column and Secret[0]=Secret_Column.
 type Config struct {
 	*sql.DB
-	Key                []string
-	Secret             []string //Can be "" but not recommended
-	TableName          string
-	ErrorMessages      map[int]map[string]string
-	Context            func(r *http.Request, authenticatedKey string)
-	Debug              bool
-	Postgres           bool
-	HTTPSProtectionOff bool //Default is HTTPS Protection On
+	Key                    []string
+	Secret                 []string //Can be "" but not recommended
+	TableName              string
+	ErrorMessages          map[int]map[string]string
+	Context                func(r *http.Request, authenticatedKey string)
+	Debug                  bool
+	Postgres               bool
+	HTTPSProtectionOff     bool //Default is HTTPS Protection On
+	GAE_ManagedEnvironment bool //Default is false. ALWAYS KEEP THIS FALSE UNLESS you are using Google App Engine-Managed Environment
 }
 
 type RESTGate struct {
@@ -116,6 +117,11 @@ func New(headerKeyLabel string, headerSecretLabel string, as AuthenticationSourc
 		log.Printf("\x1b[31mWARNING: HTTPS Protection is off. This is potentially insecure!\x1b[39;49m")
 	}
 
+	if t.config.GAE_ManagedEnvironment {
+		//HTTPS Protection is off
+		log.Printf("\x1b[31mWARNING: Set GAE_ManagedEnvironment to false UNLESS you are using Google App Engine-Managed Environment. This is potentially insecure!\x1b[39;49m")
+	}
+
 	if as == Database {
 
 		if numberKeys != 1 { //We need exactly 1 Key (it represents field name in database)
@@ -152,10 +158,19 @@ func (self *RESTGate) ServeHTTP(w http.ResponseWriter, req *http.Request, next h
 	//Check if HTTPS Protection has been turned off
 	if !self.config.HTTPSProtectionOff {
 		//HTTPS Protection is on so we must check it
-		if !(strings.EqualFold(req.URL.Scheme, "https") || req.TLS != nil) {
-			r := render.New(render.Options{})
-			r.JSON(w, http.StatusUnauthorized, self.config.ErrorMessages[3]) //"Please use HTTPS connection"
-			return
+
+		if self.config.GAE_ManagedEnvironment == true {
+			if req.Header.Get("X-AppEngine-Https") != "on" {
+				r := render.New(render.Options{})
+				r.JSON(w, http.StatusUnauthorized, self.config.ErrorMessages[3]) //"Please use HTTPS connection"
+				return
+			}
+		} else {
+			if !(strings.EqualFold(req.URL.Scheme, "https") || req.TLS != nil) {
+				r := render.New(render.Options{})
+				r.JSON(w, http.StatusUnauthorized, self.config.ErrorMessages[3]) //"Please use HTTPS connection"
+				return
+			}
 		}
 	}
 
