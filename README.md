@@ -21,6 +21,7 @@ RestGate does only these things:
 
 Since Go is a new programming language, I have made the documentation and code as easy to understand as possible. Studying the code can be a great learning experience.
 
+To use with the popular [Gin](https://gin-gonic.github.io/gin/) framework, refer to here: https://github.com/pjebs/restgate/issues/4
 
 Installation
 -------------
