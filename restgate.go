@@ -20,8 +20,10 @@ import (
 	"crypto/subtle"
 	"database/sql"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 
 	e "github.com/pjebs/jsonerror"
@@ -46,6 +48,7 @@ type Config struct {
 	Context                 func(r *http.Request, authenticatedKey string)
 	Debug                   bool
 	Postgres                bool
+	Logger                  ALogger
 	HTTPSProtectionOff      bool //Default is HTTPS Protection On
 	GAE_FlexibleEnvironment bool //Default is false. ALWAYS KEEP THIS FALSE UNLESS you are using Google App Engine-Flexible Environment
 }
@@ -57,30 +60,51 @@ type RESTGate struct {
 	config            Config
 }
 
+type ALogger interface {
+	Fatal(v ...interface{})
+	Fatalf(format string, v ...interface{})
+	Fatalln(v ...interface{})
+	Flags() int
+	Output(calldepth int, s string) error
+	Panic(v ...interface{})
+	Panicf(format string, v ...interface{})
+	Panicln(v ...interface{})
+	Prefix() string
+	Print(v ...interface{})
+	Printf(format string, v ...interface{})
+	Println(v ...interface{})
+	SetFlags(flag int)
+	SetOutput(w io.Writer)
+	SetPrefix(prefix string)
+}
+
 func New(headerKeyLabel string, headerSecretLabel string, as AuthenticationSource, config Config) *RESTGate {
+	if config.Logger == nil {
+		config.Logger = log.New(os.Stdout, "", 0)
+	}
 	t := &RESTGate{headerKeyLabel: headerKeyLabel, headerSecretLabel: headerSecretLabel, source: as, config: config}
-	log.Printf("RestGate initializing")
+	t.config.Logger.Printf("RestGate initializing")
 
 	numberKeys := len(t.config.Key)
 	numberSecrets := len(t.config.Secret)
 
 	if numberKeys == 0 { //Key is not set
 		if t.config.Debug == true {
-			log.Printf("RestGate: Key is not set")
+			t.config.Logger.Printf("RestGate: Key is not set")
 		}
 		return nil
 	}
 
 	if numberSecrets > numberKeys { //Too many Secret's defined
 		if t.config.Debug == true {
-			log.Printf("RestGate: Too many Secrets defined. At most there should be 1 secret per key")
+			t.config.Logger.Printf("RestGate: Too many Secrets defined. At most there should be 1 secret per key")
 		}
 		return nil
 	}
 
 	if headerKeyLabel == "" { //headerKeyLabel must be defined
 		if t.config.Debug == true {
-			log.Printf("RestGate: headerKeyLabel is not defined.")
+			t.config.Logger.Printf("RestGate: headerKeyLabel is not defined.")
 		}
 		return nil
 	}
@@ -114,19 +138,19 @@ func New(headerKeyLabel string, headerSecretLabel string, as AuthenticationSourc
 	//Check if HTTPS Protection has been turned off
 	if t.config.HTTPSProtectionOff {
 		//HTTPS Protection is off
-		log.Printf("\x1b[31mWARNING: HTTPS Protection is off. This is potentially insecure!\x1b[39;49m")
+		t.config.Logger.Printf("\x1b[31mWARNING: HTTPS Protection is off. This is potentially insecure!\x1b[39;49m")
 	}
 
 	if t.config.GAE_FlexibleEnvironment {
 		//HTTPS Protection is off
-		log.Printf("\x1b[31mWARNING: Set GAE_FlexibleEnvironment to false UNLESS you are using Google App Engine-Flexible Environment. This is potentially insecure!\x1b[39;49m")
+		t.config.Logger.Printf("\x1b[31mWARNING: Set GAE_FlexibleEnvironment to false UNLESS you are using Google App Engine-Flexible Environment. This is potentially insecure!\x1b[39;49m")
 	}
 
 	if as == Database {
 
 		if numberKeys != 1 { //We need exactly 1 Key (it represents field name in database)
 			if t.config.Debug == true {
-				log.Printf("RestGate: For Database mode, we need exactly 1 Key which represents the field name in the database table")
+				t.config.Logger.Printf("RestGate: For Database mode, we need exactly 1 Key which represents the field name in the database table")
 			}
 			return nil
 		}
@@ -135,7 +159,7 @@ func New(headerKeyLabel string, headerSecretLabel string, as AuthenticationSourc
 		//The developer should ensure a database has been selected (i.e. to prevent "No Database selected" error)
 		if t.config.DB == nil { //DB is not set
 			if t.config.Debug == true {
-				log.Printf("RestGate: Database is not set. Be sure that a database name is selected")
+				t.config.Logger.Printf("RestGate: Database is not set. Be sure that a database name is selected")
 			}
 			return nil
 		}
@@ -143,7 +167,7 @@ func New(headerKeyLabel string, headerSecretLabel string, as AuthenticationSourc
 		//Check if table is set
 		if t.config.TableName == "" { //Table name is not set
 			if t.config.Debug == true {
-				log.Printf("RestGate: For Database mode, a table name is required")
+				t.config.Logger.Printf("RestGate: For Database mode, a table name is required")
 			}
 			return nil
 		}
@@ -253,7 +277,7 @@ func (self *RESTGate) ServeHTTP(w http.ResponseWriter, req *http.Request, next h
 		stmt, err := db.Prepare(preparedStatement)
 		if err != nil {
 			if self.config.Debug == true {
-				log.Printf("RestGate: Run time database error: %+v", err)
+				self.config.Logger.Printf("RestGate: Run time database error: %+v", err)
 			}
 			r := render.New(render.Options{})
 			r.JSON(w, http.StatusUnauthorized, self.config.ErrorMessages[99]) //"Software Developers have not setup authentication correctly"
@@ -268,8 +292,8 @@ func (self *RESTGate) ServeHTTP(w http.ResponseWriter, req *http.Request, next h
 			err = stmt.QueryRow(key, secret).Scan(&count)
 		}
 
-		// log.Printf("result error: %+v", err)
-		// log.Printf("count: %+v", count)
+		// t.config.Logger.Printf("result error: %+v", err)
+		// t.config.Logger.Printf("count: %+v", count)
 
 		if err == nil && count == 1 {
 			//Authentication PASSED
@@ -280,7 +304,7 @@ func (self *RESTGate) ServeHTTP(w http.ResponseWriter, req *http.Request, next h
 		} else { //==sql.ErrNoRows or count == 0
 			//Something went wrong
 			if self.config.Debug == true && count > 1 {
-				log.Printf("RestGate: Database query returned more than 1 identical Key. Make sure the KEY field in the table is set to UNIQUE")
+				self.config.Logger.Printf("RestGate: Database query returned more than 1 identical Key. Make sure the KEY field in the table is set to UNIQUE")
 			}
 			r := render.New(render.Options{})
 			r.JSON(w, http.StatusUnauthorized, self.config.ErrorMessages[2]) //"Unauthorized Access"
