@@ -65,7 +65,7 @@ type ALogger interface {
 
 func New(headerKeyLabel string, headerSecretLabel string, as AuthenticationSource, config Config) *RESTGate {
 	if config.Logger == nil {
-		config.Logger = log.New(os.Stdout, "", 0)
+		config.Logger = log.New(os.Stderr, "", LstdFlags)
 	}
 	t := &RESTGate{headerKeyLabel: headerKeyLabel, headerSecretLabel: headerSecretLabel, source: as, config: config}
 	t.config.Logger.Printf("RestGate initializing")
