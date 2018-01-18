@@ -250,6 +250,10 @@ For the code sample above, the HTTP Request Header will need to contain `X-Auth-
 
 If the Key/Secret is invalid, the user **will not** be able to access your endpoint. Instead they will be returned a JSON response: `Unauthorized Access` (provided you didn't customize the default error messages).
 
+**How do I actually authenticate with JWT?**
+
+An example API server is available in the [examples](https://github.com/pjebs/restgate/examples/jwt) directory
+
 **Where should I put RestGate in my middleware stack?**
 
 You should put it directly after Recovery, Logging and HTTPS Security middleware.
