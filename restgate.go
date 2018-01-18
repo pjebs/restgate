@@ -17,6 +17,8 @@ Thanks to Jeremy Saenz & Brendon Murphy for timing-attack protection
 
 import (
 	// "errors"
+
+	"crypto/rsa"
 	"crypto/subtle"
 	"database/sql"
 	"fmt"
@@ -26,6 +28,7 @@ import (
 	"strings"
 
 	e "github.com/pjebs/jsonerror"
+	jwt "gopkg.in/dgrijalva/jwt-go.v3"
 	"gopkg.in/unrolled/render.v1"
 )
 
@@ -34,15 +37,26 @@ type AuthenticationSource int
 const (
 	Static   AuthenticationSource = 0
 	Database                      = 1
+	JWT                           = 2
 )
+
+//JWT supported signing methods
+const (
+	RSA = iota
+	HMAC
+)
+
+var rsaPubKey *rsa.PublicKey
 
 //When AuthenticationSource=Static, Key(s)=Actual Key and Secret(s)=Actual Secret.
 //When AuthenticationSource=Database, Key[0]=Key_Column and Secret[0]=Secret_Column.
+//When AuthenticationSource=JWT, Key and Secret are not required.
 type Config struct {
 	*sql.DB
 	Key                     []string
 	Secret                  []string //Can be "" but not recommended
 	TableName               string
+	JWT                     JWTConfig
 	ErrorMessages           map[int]map[string]string
 	Context                 func(r *http.Request, authenticatedKey string)
 	Debug                   bool
@@ -50,6 +64,14 @@ type Config struct {
 	Logger                  ALogger
 	HTTPSProtectionOff      bool //Default is HTTPS Protection On
 	GAE_FlexibleEnvironment bool //Default is false. ALWAYS KEEP THIS FALSE UNLESS you are using Google App Engine-Flexible Environment
+}
+
+type JWTConfig struct {
+	Algorithm        int               //What Algorithm our tokens are signed with (restgate.RSA or restgate.HMAC)
+	SigningMethod    jwt.SigningMethod //The jwt signing method expected for incoming tokens, for example: jwt.SigningMethodHS256
+	RSAPublicKeyData []byte            //RSA public key data only used if Algorithm is set to restgate.RSA
+	HMACSecret       string            //HMAC secret only used if Algorithm is set to restgate.HMAC
+	Claims           func(r *http.Request, name string, value interface{})
 }
 
 type RESTGate struct {
@@ -73,7 +95,7 @@ func New(headerKeyLabel string, headerSecretLabel string, as AuthenticationSourc
 	numberKeys := len(t.config.Key)
 	numberSecrets := len(t.config.Secret)
 
-	if numberKeys == 0 { //Key is not set
+	if numberKeys == 0 && as != JWT { //Key is not set
 		if t.config.Debug == true {
 			t.config.Logger.Printf("RestGate: Key is not set")
 		}
@@ -159,6 +181,33 @@ func New(headerKeyLabel string, headerSecretLabel string, as AuthenticationSourc
 
 	}
 
+	if as == JWT {
+
+		var err error
+
+		switch t.config.JWT.Algorithm {
+		// Validate that the key is a valid RSA public key
+		case RSA:
+			rsaPubKey, err = jwt.ParseRSAPublicKeyFromPEM(t.config.JWT.RSAPublicKeyData)
+			if err != nil {
+				if t.config.Debug == true {
+					t.config.Logger.Printf("RestGate: RSA Public key data is invalid: %+v", err)
+				}
+				return nil
+			}
+		// Validate that we have a valid secret
+		case HMAC:
+			if t.config.JWT.HMACSecret == "" {
+				if t.config.Debug == true {
+					t.config.Logger.Printf("RestGate: HMAC algorithm selected but no secret was configured")
+				}
+				return nil
+			}
+
+		}
+
+	}
+
 	return t
 }
 
@@ -232,12 +281,12 @@ func (self *RESTGate) ServeHTTP(w http.ResponseWriter, req *http.Request, next h
 			r := render.New(render.Options{})
 			r.JSON(w, http.StatusUnauthorized, self.config.ErrorMessages[2]) //"Unauthorized Access"
 			return
-		} else { //Authentication PASSED
-			if self.config.Context != nil {
-				self.config.Context(req, key)
-			}
-			next(w, req)
 		}
+		//Authentication PASSED
+		if self.config.Context != nil {
+			self.config.Context(req, key)
+		}
+		next(w, req)
 
 	} else if self.source == Database {
 		db := self.config.DB
@@ -296,6 +345,55 @@ func (self *RESTGate) ServeHTTP(w http.ResponseWriter, req *http.Request, next h
 			return
 		}
 
+	} else if self.source == JWT {
+
+		var jwtKey interface{}
+		var jwtToken string
+
+		// See what type of Signing method we need to verify against
+		// For RSA signed tokens we need the RSA public key
+		// For HMAC signed tokens we just need the secret
+
+		if self.config.JWT.Algorithm == RSA {
+			jwtKey = rsaPubKey
+		} else if self.config.JWT.Algorithm == HMAC {
+			jwtKey = []byte(self.config.JWT.HMACSecret)
+		} else {
+			r := render.New(render.Options{})
+			r.JSON(w, http.StatusUnauthorized, self.config.ErrorMessages[99]) //"Software Developers have not setup authentication correctly"
+			return
+		}
+
+		// Remove the "Bearer" authorization type from the key if exists to get just the token data
+		if strings.Contains(key, "Bearer ") {
+			jwtToken = strings.TrimPrefix(key, "Bearer ")
+		} else {
+			jwtToken = key
+		}
+
+		//Validate token and get the claims if any
+		claims, err := verifyToken(jwtToken, self.config.JWT.SigningMethod, jwtKey)
+		if err != nil {
+			if self.config.Debug == true {
+				self.config.Logger.Printf("RestGate: JWT validation error: %+v", err)
+			}
+			r := render.New(render.Options{})
+			r.JSON(w, http.StatusUnauthorized, self.config.ErrorMessages[2]) //"Unauthorized Access"
+			return
+		}
+
+		if self.config.Context != nil {
+			self.config.Context(req, key)
+		}
+
+		// Add claims to the context if we got any
+		if self.config.JWT.Claims != nil && len(claims) > 0 {
+			for k, v := range claims {
+				self.config.JWT.Claims(req, k, v)
+			}
+		}
+		next(w, req)
+
 	} else {
 		r := render.New(render.Options{})
 		r.JSON(w, http.StatusUnauthorized, self.config.ErrorMessages[99]) //"Software Developers have not setup authentication correctly"
@@ -308,8 +406,29 @@ func (self *RESTGate) ServeHTTP(w http.ResponseWriter, req *http.Request, next h
 func secureCompare(given string, actual string) bool {
 	if subtle.ConstantTimeEq(int32(len(given)), int32(len(actual))) == 1 {
 		return subtle.ConstantTimeCompare([]byte(given), []byte(actual)) == 1
-	} else {
-		/* Securely compare actual to itself to keep constant time, but always return false */
-		return subtle.ConstantTimeCompare([]byte(actual), []byte(actual)) == 1 && false
 	}
+	/* Securely compare actual to itself to keep constant time, but always return false */
+	return subtle.ConstantTimeCompare([]byte(actual), []byte(actual)) == 1 && false
+
+}
+
+//verifyToken does the actual validation of the token using the configured signing method
+func verifyToken(tokenData string, signMethod jwt.SigningMethod, key interface{}) (map[string]interface{}, error) {
+
+	var token *jwt.Token
+	var tokenClaims jwt.MapClaims
+	var err error
+
+	token, err = jwt.Parse(tokenData, func(token *jwt.Token) (interface{}, error) {
+		if token.Method != signMethod {
+			return nil, fmt.Errorf("unexpected signing method on token: %v (was expecting: %s)", token.Header["alg"], signMethod.Alg())
+		}
+		tokenClaims = token.Claims.(jwt.MapClaims)
+		return key, nil
+	})
+
+	if err == nil && token.Valid {
+		return tokenClaims, nil
+	}
+	return tokenClaims, err
 }

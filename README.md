@@ -11,10 +11,13 @@ RestGate does only these things:
 
 * Protects Endpoints by requiring authentication *via* the HTTP Request Header
 * Multiple Keys and optional corresponding Secrets
+* Supports JSON Web Tokens [JWT](https://jwt.io/introduction/)
+* Supports both RSA and HMAC signed tokens
 * Keys (and corresponding Secrets) can be configured in code [Static mode]
 * Keys (and corresponding Secrets) can be stored in any SQL database [Database mode]
+* Keys (and corresponding Secrets) are not needed in [JWT mode]
 * JSON Error Responses are fully customizable
-* Utilize a Context (i.e. Gorilla Context) to pass authenticated KEY to later middleware and endpoint handlers
+* Utilize a Context (i.e. Gorilla Context) to pass authenticated KEY to later middleware and endpoint handlers and optionally JWT claims
 * Protection from timing-attacks (Authentication Verification)
 * HTTPS Protection
 
@@ -45,12 +48,15 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"io/ioutil"
+	"net/http"
+
+	"github.com/pjebs/restgate"
 	"github.com/codegangsta/negroni"
 	_ "github.com/go-sql-driver/mysql" //_ "github.com/lib/pq" (For PostgreSQL)
 	"github.com/gorilla/context"
 	"github.com/gorilla/mux"
-	"github.com/pjebs/restgate"
-	"net/http"
+	jwt "gopkg.in/dgrijalva/jwt-go.v3"
 )
 
 func init() { //On Google App Engine you don't use main()
@@ -62,9 +68,8 @@ func init() { //On Google App Engine you don't use main()
 	app.Use(negroni.NewLogger())
 	app.UseHandler(NewRoute())
 	http.Handle("/", context.ClearHandler(app))
-	// app.Run(":8080") //On Google App Engine, you don't use this
+	//app.Run(":8080") //On Google App Engine, you don't use this
 }
-
 
 func NewRoute() *mux.Router {
 
@@ -75,6 +80,12 @@ func NewRoute() *mux.Router {
 	rest2Router := mux.NewRouter()
 	rest2Router.HandleFunc("/api2", Handler2()) //A second Rest API Endpoint handler -> Use your own
 
+	rest3Router := mux.NewRouter()
+	rest3Router.HandleFunc("/api3", Handler3()) //A third Rest API Endpoint handler -> Use your own
+
+	rest4Router := mux.NewRouter()
+	rest4Router.HandleFunc("/api4", Handler4()) //A fourth Rest API Endpoint handler -> Use your own
+
 	//Create negroni instance to handle different middlewares for different api routes
 	negRest := negroni.New()
 	negRest.Use(restgate.New("X-Auth-Key", "X-Auth-Secret", restgate.Static, restgate.Config{Context: C, Key: []string{"12345"}, Secret: []string{"secret"}}))
@@ -84,11 +95,23 @@ func NewRoute() *mux.Router {
 	negRest2.Use(restgate.New("X-Auth-Key", "X-Auth-Secret", restgate.Database, restgate.Config{DB: SqlDB(), TableName: "users", Key: []string{"keys"}, Secret: []string{"secrets"}}))
 	negRest2.UseHandler(rest2Router)
 
+	negRest3 := negroni.New()
+	negRest3.Use(restgate.New("Authorization", "", restgate.JWT, restgate.Config{Context: C, JWT: restgate.JWTConfig{Algorithm: restgate.RSA,
+		Claims: J, SigningMethod: jwt.SigningMethodRS256, RSAPublicKeyData: RSAKeyData()},}))
+	negRest3.UseHandler(rest3Router)
+
+	negRest4 := negroni.New()
+	negRest4.Use(restgate.New("Authorization", "", restgate.JWT, restgate.Config{JWT: restgate.JWTConfig{Algorithm: restgate.HMAC,
+		SigningMethod: jwt.SigningMethodHS256, HMACSecret: "secret"},}))
+	negRest4.UseHandler(rest4Router)
+
 	//Create main router
 	mainRouter := mux.NewRouter().StrictSlash(true)
 	mainRouter.HandleFunc("/", MainHandler()) //Main Handler -> Use your own
-	mainRouter.Handle("/api", negRest) //This endpoint is protected by RestGate via hardcoded KEYs
-	mainRouter.Handle("/api2", negRest2) //This endpoint is protected by RestGate via KEYs stored in a database
+	mainRouter.Handle("/api", negRest)        //This endpoint is protected by RestGate via hardcoded KEYs
+	mainRouter.Handle("/api2", negRest2)      //This endpoint is protected by RestGate via KEYs stored in a database
+	mainRouter.Handle("/api3", negRest3)      //This endpoint is protected by RestGate via a RSA signed JWT
+	mainRouter.Handle("/api4", negRest4)      //This endpoint is protected by RestGate via a HMAC signed JWT
 
 	return mainRouter
 
@@ -100,14 +123,20 @@ func C(r *http.Request, authenticatedKey string) {
 	context.Set(r, 0, authenticatedKey) // Read http://www.gorillatoolkit.org/pkg/context about setting arbitary context key
 }
 
+//Optional function to add JWT claims via name/value - If the claims on the token are not required, remove 'Context: J' or alternatively pass nil
+//NB: Endpoint handler can get all JWT claims (name and value)
+func J(r *http.Request, name string, value interface{}) {
+	context.Set(r, name, value)
+}
+
 //Optional Database
 func SqlDB() *sql.DB {
-	
-	DB_TYPE     := "mysql"
-	DB_HOST     := "localhost"
-	DB_PORT     := "3306"
-	DB_USER     := "root"
-	DB_NAME     := "mydatabase"
+
+	DB_TYPE := "mysql"
+	DB_HOST := "localhost"
+	DB_PORT := "3306"
+	DB_USER := "root"
+	DB_NAME := "mydatabase"
 	DB_PASSWORD := ""
 
 	openString := DB_USER + ":" + DB_PASSWORD + "@tcp(" + DB_HOST + ":" + DB_PORT + ")/" + DB_NAME
@@ -120,6 +149,15 @@ func SqlDB() *sql.DB {
 	return db
 	// defer db.Close()
 
+}
+
+//for RSA signed tokens we need to get the RSA public key contents
+func RSAKeyData() []byte {
+	keydata, err := ioutil.ReadFile("public-key.pem")
+	if err != nil {
+		return nil
+	}
+	return keydata
 }
 
 //Endpoint Handlers
@@ -135,11 +173,24 @@ func Handler2() func(http.ResponseWriter, *http.Request) {
 	}
 }
 
+func Handler3() func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, "/api3 -> Handler3 - protected by RestGate (JWT mode with RSA signature)\n")
+	}
+}
+
+func Handler4() func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, "/api4 -> Handler4 - protected by RestGate (JWT mode with HMAC signature)\n")
+	}
+}
+
 func MainHandler() func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, "/ -> MainHandler - not protected by RestGate\n")
 	}
 }
+
 
 ```
 
@@ -152,16 +203,18 @@ func New(headerKeyLabel string, headerSecretLabel string, as AuthenticationSourc
 
 `headerKeyLabel string` - What the header field name should be for required **KEY**.
 
-`headerSecretLabel string` - *Optional* What the header header field name should be for required **SECRET**. This can be `""` if you don't intend to configure a **SECRET**.
+`headerSecretLabel string` - *Optional* What the header header field name should be for required **SECRET**. This can be `""` if you don't intend to configure a **SECRET** or if you're using `restgate.JWT`.
 
-`as AuthenticationSource` - Can be `restgate.Static` or `restgate.Database.` If Static is chosen, then KEY(s) and SECRET(s) must be hardcoded.
+`as AuthenticationSource` - Can be `restgate.Static`, `restgate.Database.` or `restgate.JWT`. If Static is chosen, then KEY(s) and SECRET(s) must be hardcoded.
 
-`config Config` - A struct used to configure extra settings such as hardcoded **KEYS** and **SECRETS**, custom JSON error messages, Database settings (for `restgate.Database` mode) and context function. **PostgreSQL** users must set `Postgres` to true.
+`config Config` - A struct used to configure extra settings such as hardcoded **KEYS** and **SECRETS**, custom JSON error messages, Database settings (for `restgate.Database` mode), JWT settings (for `restgate.JWT` mode, using the `restgate.JWTConfig` struct with it's own context function) and context function. **PostgreSQL** users must set `Postgres` to true.
 
 Settings
 ---------
 
 If `AuthenticationSource==restgate.Database,` then **KEY** and **SECRET** fields in the `Config` struct represent the field names in the database table.
+
+If `AuthenticationSource==restgate.JWT,` then **KEY** and **SECRET** fields in the `Config` struct are not needed, but extra configuration parameters using `restgate.JWTConfig` are needed
 
 If you want to provide custom JSON error messages, you can pass something like this into the `Config` Struct:
 
@@ -232,6 +285,9 @@ If you are only using a **KEY**, then usually it is used to *identify* the user 
 This usually occurs at this point: `<negroni.New()>.Use(restgate.New(...))`.
 
 `restgate.New(...)` returns a nil pointer if there is a configuration error. A nil pointer will cause Negroni to panic. This is beneficial because you will notice it instantly and fix up the configuration.
+
+**How can I generate a valid JWT token**
+JSON Web tokens can be created on [jwt.io](http://jwt.io).
 
 Other Useful Packages
 ------------
